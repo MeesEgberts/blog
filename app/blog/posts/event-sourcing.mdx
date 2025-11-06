@@ -1,0 +1,18 @@
+---
+title: "Event Sourcing in NestJS: Building Systems That Remember Everything"
+publishedAt: "2025-11-10"
+summary: "A concise guide to applying CQRS and Event Sourcing to build scalable, auditable systems—illustrated with practical examples in NestJS."
+---
+
+Event Sourcing is an architectural pattern that stores the *state changes* of your system—called “events”—instead of just the current state. Instead of saving a snapshot of “what is,” it saves a sequence of “what happened.” Each event represents a fact that occurred (e.g., *OrderPlaced*, *PaymentReceived*, *UserEmailUpdated*). The current state can always be rebuilt by replaying these events.
+
+For developers used to CRUD-based systems, this approach may sound like extra work. But event sourcing unlocks several benefits:
+
+* **Auditability:** You always know *why* something happened.
+* **Debuggability:** You can replay events to reproduce past system states.
+* **Integrations:** Other systems can subscribe to meaningful domain events instead of database changes.
+* **Scalability:** Writes and reads can evolve independently, often paired with CQRS (Command Query Responsibility Segregation).
+
+In the NestJS ecosystem, event sourcing fits naturally thanks to its modular architecture, dependency injection, and ability to combine with CQRS through the official `@nestjs/cqrs` package.
+
+---
