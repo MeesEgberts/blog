@@ -41,42 +41,38 @@ For simplicity, this example keeps the read and write sides within the same Nest
 
 ### Implementing CQRS and Event Sourcing in NestJS
 
-Start by creating a new NestJS project:
+Start by creating a new NestJS project to serve as a clean foundation for the CQRS and Event Sourcing setup.
 
 ```bash
 npm i -g @nestjs/cli
 nest new event-sourcing
 ```
 
-Next, install the official CQRS module, which provides the building blocks for commands, events, aggregates, and handlers:
+Once created, install the official CQRS module. This package provides decorators, interfaces, and utilities that simplify implementing commands, queries, events, and aggregates.
 
 ```bash
 npm install @nestjs/cqrs
 ```
 
-Open your root module (`app.module.ts`) and import the `CqrsModule`. You can remove the default boilerplate to keep the project minimal:
+Open your root module (`app.module.ts`) and import the `CqrsModule`. Remove the default boilerplate files (`app.controller.ts`, `app.service.ts`, and their test files`) to keep your project minimal and focused.
 
 ```typescript
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 
 @Module({
-  imports: [CqrsModule],
+  imports: [CqrsModule.forRoot()],
 })
 export class AppModule {}
 ```
 
-You can safely delete the default `app.controller.ts`, `app.service.ts`, and their corresponding spec file—these aren’t needed for this example.
-
-At this point, your project is ready to define **aggregates**, **commands**, and **event handlers** following the CQRS and Event Sourcing architecture.
-
----
+At this stage, your application is ready to use the CQRS pattern, separating the command (write) and query (read) responsibilities. The next step is to design a small, real-world domain to demonstrate the full event-sourcing flow.
 
 ### Creating the Invoice Domain
 
-For this example, we’ll build a simple *invoice management system* to demonstrate the flow of CQRS and Event Sourcing concepts.
+For this example, you’ll build a simple *invoice management system*. Each invoice can be created, marked as paid, or updated later. This domain is ideal for showing how commands trigger domain events and how state changes are stored and replayed.
 
-Generate a new resource using the NestJS CLI:
+Generate a new resource with the NestJS CLI:
 
 ```bash
 nest g res invoices
@@ -87,22 +83,178 @@ When prompted:
 * **What transport layer do you use?** REST API
 * **Would you like to generate CRUD entry points?** Yes
 
-We’ll organize the module using a clean architecture structure to separate responsibilities clearly:
+This generates a basic module, controller, and service. To structure it cleanly for CQRS and Event Sourcing, reorganize the generated files into the following structure:
 
 ```
 src/
 └── invoices/
-    ├── application/      # Command & event handlers (use cases)
-    ├── domain/           # Aggregates, entities, and events
-    ├── infrastructure/   # Repositories, event store, persistence logic
-    └── presentation/
-        └── http/         # Controllers and DTOs
+    ├── application/       # Use cases, command handlers, event handlers
+    │   ├── commands/
+    │   │   ├── handlers/
+    │   │   └── impl/
+    │   ├── invoices.service.ts
+    │   └── invoices.module.ts
+    ├── domain/            # Core domain logic (aggregates, entities, events)
+    ├── infrastructure/    # Repositories, persistence, and event store
+    │   └── persistence/
+    │       └── entities/
+    │           └── invoice.entity.ts
+    └── presentation/      # HTTP controllers and DTOs
+        └── http/
+            ├── dto/
+            │   ├── create-invoice.dto.ts
+            │   └── update-invoice.dto.ts
+            ├── invoices.controller.ts
+            └── invoices.controller.spec.ts
 ```
 
-This layout keeps the CQRS flow clear: *commands* go through the application layer, *events* live in the domain layer, and *read models* or *APIs* are exposed through the presentation layer.
+This structure aligns with domain-driven design principles and keeps your layers separated:
 
+* **Presentation layer:** Handles HTTP requests and responses.
+* **Application layer:** Coordinates commands, events, and domain logic.
+* **Domain layer:** Encapsulates business rules and invariants.
+* **Infrastructure layer:** Deals with persistence and event storage.
 
+### Simplifying the Controller and Service
 
+Before implementing CQRS, clean up the generated files. You only need the `create` endpoint for now, which will handle invoice creation through a command.
+
+```typescript
+// src/invoices/presentation/http/dto/create-invoice.dto.ts
+export class CreateInvoiceDto {
+  readonly customerId: string;
+  readonly amount: number;
+}
+```
+
+Optionally, add decorators from `class-validator` to enforce input validation. See the [NestJS Validation](https://docs.nestjs.com/techniques/validation) documentation for more details.
+
+Next, update the controller to handle invoice creation requests.
+
+```typescript
+// src/invoices/presentation/http/invoices.controller.ts
+import { Body, Controller, Post } from '@nestjs/common';
+import { InvoicesService } from '../../application/invoices.service';
+import { CreateInvoiceDto } from './dto/create-invoice.dto';
+
+@Controller('invoices')
+export class InvoicesController {
+  constructor(private readonly invoicesService: InvoicesService) {}
+
+  @Post()
+  create(@Body() createInvoiceDto: CreateInvoiceDto) {
+    return this.invoicesService.create(createInvoiceDto);
+  }
+}
+```
+
+Simplify the service to focus on dispatching commands. The service acts as an entry point to the application layer and delegates the logic to the CQRS command bus.
+
+```typescript
+// src/invoices/application/invoices.service.ts
+import { Injectable } from '@nestjs/common';
+import { CommandBus } from '@nestjs/cqrs';
+import { CreateInvoiceDto } from '../presentation/http/dto/create-invoice.dto';
+import { CreateInvoiceCommand } from './commands/impl/create-invoice.command';
+
+@Injectable()
+export class InvoicesService {
+  constructor(private readonly commandBus: CommandBus) {}
+
+  create(dto: CreateInvoiceDto) {
+    throw new Error('Method not implemented.');
+  }
+}
+```
+
+### Creating an Invoice Command and Handler
+
+In CQRS, **commands** represent actions that change state. Each command is handled by a **command handler** that executes the business logic, modifies the aggregate, and emits domain events.
+
+Create the command class:
+
+```typescript
+// src/invoices/application/commands/impl/create-invoice.command.ts
+export class CreateInvoiceCommand {
+  constructor(
+    public readonly customerId: string,
+    public readonly amount: number,
+  ) {}
+}
+```
+
+Then define the handler that processes it:
+
+```typescript
+// src/invoices/application/commands/handlers/create-invoice.command-handler.ts
+import { Logger } from '@nestjs/common';
+import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
+import { CreateInvoiceCommand } from '../impl/create-invoice.command';
+
+@CommandHandler(CreateInvoiceCommand)
+export class CreateInvoiceCommandHandler
+  implements ICommandHandler<CreateInvoiceCommand>
+{
+  private readonly logger = new Logger(CreateInvoiceCommandHandler.name);
+
+  constructor() {}
+
+  async execute(command: CreateInvoiceCommand): Promise<void> {
+    this.logger.debug(
+      `Executing ${CreateInvoiceCommand.name}: ${JSON.stringify(command)}`,
+    );
+  }
+}
+```
+
+Now, update the `invoice.service.ts` to dispatch the command when creating an invoice:
+
+```typescript
+// src/invoices/application/invoices.service.ts
+import { Injectable } from '@nestjs/common';
+import { CreateInvoiceDto } from '../presentation/http/dto/create-invoice.dto';
+import { CommandBus } from '@nestjs/cqrs';
+import { CreateInvoiceCommand } from './commands/impl/create-invoice.command';
+
+@Injectable()
+export class InvoicesService {
+  constructor(private readonly commandBus: CommandBus) {}
+
+  create(dto: CreateInvoiceDto) {
+    // execute the `CreateInvoiceCommand`
+    return this.commandBus.execute(
+      new CreateInvoiceCommand(dto.customerId, dto.amount),
+    );
+  }
+}
+```
+
+Lastly, register the command handler in the module:
+
+```typescript
+// src/invoices/application/invoices.module.ts
+import { Module } from '@nestjs/common';
+import { InvoicesService } from './invoices.service';
+import { InvoicesController } from '../presentation/http/invoices.controller';
+import { CreateInvoiceCommandHandler } from './commands/handlers/create-invoice.command-handler';
+
+@Module({
+  controllers: [InvoicesController],
+  providers: [
+    InvoicesService,
+    CreateInvoiceCommandHandler, // <--- add this line
+  ],
+})
+export class InvoicesModule {}
+```
+
+Verify everything is wired up correctly by running the application and sending a POST request to create an invoice. You should see the debug log from the command handler.
+
+```bash
+curl -X POST http://localhost:3000/invoices \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"123","amount":500}'
+```
 
 
 
