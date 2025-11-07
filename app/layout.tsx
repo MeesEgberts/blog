@@ -52,6 +52,12 @@ export default function RootLayout({
         GeistMono.variable,
       )}
     >
+      <head>
+        <meta
+          name="apple-mobile-web-app-title"
+          content="Portfolio | Mees Egberts"
+        />
+      </head>
       <body className="mx-4 mt-8 max-w-xl antialiased lg:mx-auto">
         <main className="mt-6 flex min-w-0 flex-auto flex-col px-2 md:px-0">
           <Navbar />

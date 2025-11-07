@@ -11,8 +11,11 @@ export async function generateStaticParams() {
   }));
 }
 
-export function generateMetadata({ params }) {
-  let post = getBlogPosts().find((post) => post.slug === params.slug);
+export async function generateMetadata({ params }: PageProps<"/blog/[slug]">) {
+  const { slug } = await params;
+
+  let post = getBlogPosts().find((post) => post.slug === slug);
+
   if (!post) {
     return;
   }
@@ -51,8 +54,9 @@ export function generateMetadata({ params }) {
   };
 }
 
-export default function Blog({ params }) {
-  let post = getBlogPosts().find((post) => post.slug === params.slug);
+export default async function Blog({ params }: PageProps<"/blog/[slug]">) {
+  const { slug } = await params;
+  let post = getBlogPosts().find((post) => post.slug === slug);
 
   if (!post) {
     notFound();
