@@ -36,6 +36,87 @@ These events are then published through an **Event Bus** and processed by **Even
 
 For simplicity, this example keeps the read and write sides within the same NestJS application, but in production they can be separate services communicating through an event bus.
 
-<Image src="/diagrams/event-sourcing.png" className="w-full" alt="Event Sourcing Architecture" width={575} height={305} />
+<Image src="/diagrams/event-sourcing.png" className="w-full" alt="Event Sourcing Architecture" width={575}
+       height={305}/>
+
+### Implementing CQRS and Event Sourcing in NestJS
+
+Start by creating a new NestJS project:
+
+```bash
+npm i -g @nestjs/cli
+nest new event-sourcing
+```
+
+Next, install the official CQRS module, which provides the building blocks for commands, events, aggregates, and handlers:
+
+```bash
+npm install @nestjs/cqrs
+```
+
+Open your root module (`app.module.ts`) and import the `CqrsModule`. You can remove the default boilerplate to keep the project minimal:
+
+```typescript
+import { Module } from '@nestjs/common';
+import { CqrsModule } from '@nestjs/cqrs';
+
+@Module({
+  imports: [CqrsModule],
+})
+export class AppModule {}
+```
+
+You can safely delete the default `app.controller.ts`, `app.service.ts`, and their corresponding spec file—these aren’t needed for this example.
+
+At this point, your project is ready to define **aggregates**, **commands**, and **event handlers** following the CQRS and Event Sourcing architecture.
 
 ---
+
+### Creating the Invoice Domain
+
+For this example, we’ll build a simple *invoice management system* to demonstrate the flow of CQRS and Event Sourcing concepts.
+
+Generate a new resource using the NestJS CLI:
+
+```bash
+nest g res invoices
+```
+
+When prompted:
+
+* **What transport layer do you use?** REST API
+* **Would you like to generate CRUD entry points?** Yes
+
+We’ll organize the module using a clean architecture structure to separate responsibilities clearly:
+
+```
+src/
+└── invoices/
+    ├── application/      # Command & event handlers (use cases)
+    ├── domain/           # Aggregates, entities, and events
+    ├── infrastructure/   # Repositories, event store, persistence logic
+    └── presentation/
+        └── http/         # Controllers and DTOs
+```
+
+This layout keeps the CQRS flow clear: *commands* go through the application layer, *events* live in the domain layer, and *read models* or *APIs* are exposed through the presentation layer.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---
+
+You can explore the complete working example here: [NestJS Event Sourcing Starter](https://github.com/MeesEgberts/event-sourcing).

@@ -49,8 +49,16 @@ function RoundedImage(props) {
 }
 
 function Code({ children, ...props }) {
-  let codeHTML = highlight(children);
-  return <code dangerouslySetInnerHTML={{ __html: codeHTML }} {...props} />;
+  const code = String(children);
+  const isMultiLine = code.includes("\n");
+
+  if (!isMultiLine) {
+    return <code {...props}>{code}</code>;
+  }
+
+  let html = highlight(children);
+
+  return <code dangerouslySetInnerHTML={{ __html: html }} {...props} />;
 }
 
 function slugify(str) {
