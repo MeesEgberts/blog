@@ -13,7 +13,7 @@
     "next-mdx-remote": "^4.4.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "sugar-high": "^0.6.1"
+    "sugar-high": "^0.9.5"
   },
   "devDependencies": {
     "typescript": "^5",
