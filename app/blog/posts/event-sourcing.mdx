@@ -120,7 +120,7 @@ bootstrap();
 
 #### Why this setup?
 
-* `@nestjs/cqrs` gives you `CommandBus`, `QueryBus`, `EventBus`, and helpers around aggregates and handlers. This is the backbone for CQRS in Nest. ([docs.nestjs.com][1])
+* `@nestjs/cqrs` gives you `CommandBus`, `QueryBus`, `EventBus`, and helpers around aggregates and handlers. This is the backbone for CQRS in Nest.
 * Swagger shortens the feedback loop: you can create and pay invoices from a browser while watching the `events` and `invoices` tables change.
 * The bootstrap code stays thin; all domain and infrastructure concerns live in modules.
 
