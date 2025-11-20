@@ -93,7 +93,7 @@ pnpm add @nestjs/cqrs @nestjs/typeorm typeorm pg @nestjs/swagger @nestjs/mapped-
 
 The main entry point enables Swagger for quick inspection of the API:
 
-```typescript
+```ts
 // src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
@@ -125,7 +125,7 @@ bootstrap();
 
 The root module wires up CQRS, core infrastructure, shared event-sourcing utilities, and the invoice module:
 
-```typescript
+```ts
 // src/app.module.ts
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
@@ -155,14 +155,14 @@ This structure scales to multiple domains and even multiple transport layers.
 
 This example uses Postgres for both the event store and the read database, each with its own TypeORM connection:
 
-```typescript
+```ts
 // src/core/core.constants.ts
 export const EVENT_STORE_CONNECTION = 'EVENT_STORE_CONNECTION';
 ```
 
 <br />
 
-```typescript
+```ts
 // src/core/core.module.ts
 import { Module } from '@nestjs/common';
 import { EVENT_STORE_CONNECTION } from './core.constants';
@@ -259,7 +259,7 @@ By separating the connections early, you avoid accidental coupling such as joini
 
 The event store is defined through an abstraction and implemented on Postgres with TypeORM.
 
-```typescript
+```ts
 // src/shared/application/ports/event-store.ts
 import { EventEntity } from '../../infrastructure/event-store/entities/event.entity';
 
@@ -280,7 +280,7 @@ Your domain and application layers depend only on the abstraction. Replacing Pos
 
 The `events` table stores all domain events:
 
-```typescript
+```ts
 // src/shared/infrastructure/event-store/entities/event.entity.ts
 import {
   Column,
@@ -325,7 +325,7 @@ Events are append-only. If you need to change behavior, you add new events and a
 
 The Postgres implementation handles persistence and ordering of events:
 
-```typescript
+```ts
 // src/shared/infrastructure/event-store/event-store.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { EventStore } from '../../application/ports/event-store';
@@ -399,7 +399,7 @@ This code does **not** yet implement optimistic concurrency checks (comparing ex
 
 Nest’s `@nestjs/cqrs` module uses an `IEventPublisher` interface. You can plug in a custom publisher that writes events into Postgres instead of publishing them only in memory.
 
-```typescript
+```ts
 // src/shared/infrastructure/event-store/publishers/event-store.publisher.ts
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { EventBus, IEvent, IEventPublisher } from '@nestjs/cqrs';
@@ -469,7 +469,7 @@ The split between **writing to the store** and **notifying handlers** gives you 
 
 `EventSerializer` maps domain events to `EventEntity` instances:
 
-```typescript
+```ts
 // src/shared/infrastructure/event-store/serializers/event.serializer.ts
 import { Injectable } from '@nestjs/common';
 import { VersionedAggregateRoot } from '../../../domain/aggregate-root';
@@ -508,7 +508,7 @@ In environments where class names might be mangled, you can replace this with an
 
 To get events from the store back into actual class instances, a small registry keeps track of all event classes:
 
-```typescript
+```ts
 // src/shared/infrastructure/event-store/event-cls.registry.ts
 import { Type } from '@nestjs/common';
 
@@ -533,7 +533,7 @@ export class EventClsRegistry {
 
 Event classes register themselves with a decorator:
 
-```typescript
+```ts
 // src/shared/decorators/autowired-event.decorator.ts
 import { EventClsRegistry } from '../infrastructure/event-store/event-cls.registry';
 
@@ -544,7 +544,7 @@ export const AutoWiredEvent: ClassDecorator = (target: any) => {
 
 The deserializer uses this registry to restore the prototype chain when reading from the database:
 
-```typescript
+```ts
 // src/shared/infrastructure/event-store/deserializers/event.deserializer.ts
 import { Injectable, Type } from '@nestjs/common';
 import { EventEntity } from '../entities/event.entity';
@@ -580,14 +580,14 @@ The decorator keeps registration near the event definition and avoids manual lis
 
 The write model relies on a versioned aggregate root that keeps track of the last applied event position.
 
-```typescript
+```ts
 // src/shared/domain/value-objects/version.ts
 export class Version {
   constructor(readonly value: number) {}
 }
 ```
 
-```typescript
+```ts
 // src/shared/domain/aggregate-root.ts
 import { AggregateRoot } from '@nestjs/cqrs';
 import { Version } from './value-objects/version';
@@ -631,7 +631,7 @@ You can compare the current version with what is stored to detect conflicting up
 
 The `AggregateRehydrator` rebuilds an aggregate from its event stream:
 
-```typescript
+```ts
 // src/shared/application/aggregate-rehydrator.ts
 import { Injectable, Type } from '@nestjs/common';
 import { EventStore } from './ports/event-store';
@@ -676,7 +676,7 @@ It also centralizes policy: if you later add snapshots, caching, or different re
 
 `SharedModule` exposes these building blocks:
 
-```typescript
+```ts
 // src/shared/infrastructure/shared-infrastructure.module.ts
 import { Module } from '@nestjs/common';
 import { EVENT_STORE_CONNECTION } from '../../core/core.constants';
@@ -707,7 +707,7 @@ import { EventDeserializer } from './event-store/deserializers/event.deserialize
 export class SharedInfrastructureModule {}
 ```
 
-```typescript
+```ts
 // src/shared/shared.module.ts
 import { Module } from '@nestjs/common';
 import { SharedInfrastructureModule } from './infrastructure/shared-infrastructure.module';
@@ -733,7 +733,7 @@ This keeps event-sourcing concerns cross-cutting but still explicit:
 
 When an event is inserted into the `events` table, a TypeORM subscriber pushes the domain event into Nest’s `EventBus`. This way, event handlers run whenever new events are appended.
 
-```typescript
+```ts
 // src/shared/infrastructure/event-store/event-subscriber.ts
 import {
   DataSource,
@@ -809,7 +809,7 @@ This is enough to show aggregate life cycle, projections, and rehydration withou
 
 Two events describe the lifecycle of an invoice:
 
-```typescript
+```ts
 // src/invoices/domain/events/invoice-created.event.ts
 import { AutoWiredEvent } from '../../../shared/decorators/autowired-event.decorator';
 
@@ -823,7 +823,7 @@ export class InvoiceCreatedEvent {
 }
 ```
 
-```typescript
+```ts
 // src/invoices/domain/events/invoice-paid.event.ts
 import { AutoWiredEvent } from '../../../shared/decorators/autowired-event.decorator';
 
@@ -849,7 +849,7 @@ Once events are stable, aggregates and projections become implementation details
 
 The aggregate extends `VersionedAggregateRoot` and implements event handlers using the `on<EventName>` naming convention from `@nestjs/cqrs`.
 
-```typescript
+```ts
 // src/invoices/domain/invoice.ts
 import { VersionedAggregateRoot } from '../../shared/domain/aggregate-root';
 import { InvoicePaidEvent } from './events/invoice-paid.event';
@@ -896,7 +896,7 @@ The `on<EventName>` handler pattern ensures the same logic is applied both when:
 
 A factory encapsulates creation logic and emits the `InvoiceCreatedEvent`:
 
-```typescript
+```ts
 // src/invoices/domain/factories/invoice.factory.ts
 import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
@@ -944,7 +944,7 @@ Using a factory:
 
 Commands represent user intent:
 
-```typescript
+```ts
 // src/invoices/application/commands/impl/create-invoice.command.ts
 export class CreateInvoiceCommand {
   constructor(
@@ -954,7 +954,7 @@ export class CreateInvoiceCommand {
 }
 ```
 
-```typescript
+```ts
 // src/invoices/application/commands/impl/pay-invoice.command.ts
 export class PayInvoiceCommand {
   constructor(public readonly id: string) {}
@@ -973,7 +973,7 @@ Commands are messages. They can later be sent from other services, queued, or re
 
 The `CreateInvoiceCommandHandler` uses the factory and the `EventPublisher` from `@nestjs/cqrs`:
 
-```typescript
+```ts
 // src/invoices/application/commands/handlers/create-invoice.command-handler.ts
 import { Logger } from '@nestjs/common';
 import { CommandHandler, EventPublisher, ICommandHandler } from '@nestjs/cqrs';
@@ -1013,7 +1013,7 @@ export class CreateInvoiceCommandHandler
 
 The `PayInvoiceCommandHandler` rehydrates the aggregate from the event store, applies the new event, and commits again:
 
-```typescript
+```ts
 // src/invoices/application/commands/handlers/pay-invoice.command.ts
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { PayInvoiceCommand } from '../impl/pay-invoice.command';
@@ -1067,7 +1067,7 @@ This separation keeps handlers easy to test and quick to scan: “given this com
 
 The read model here is simple:
 
-```typescript
+```ts
 // src/invoices/domain/read-models/invoice.read-model.ts
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -1082,7 +1082,7 @@ export class InvoiceReadModel {
 
 The read database stores a denormalized representation:
 
-```typescript
+```ts
 // src/invoices/infrastructure/persistance/entities/invoice.entity.ts
 import { Column, Entity, PrimaryColumn } from 'typeorm';
 
@@ -1114,7 +1114,7 @@ By not reusing the aggregate as a read model, you avoid dragging in event-sourci
 
 Repositories hide TypeORM details behind interfaces:
 
-```typescript
+```ts
 // src/invoices/application/ports/find-invoice.repository.ts
 import { InvoiceReadModel } from '../../domain/read-models/invoice.read-model';
 
@@ -1124,7 +1124,7 @@ export abstract class FindInvoiceRepository {
 }
 ```
 
-```typescript
+```ts
 // src/invoices/application/ports/upsert-invoice.repository.ts
 import { DeepPartial } from 'typeorm';
 import { InvoiceEntity } from '../../infrastructure/persistance/entities/invoice.entity';
@@ -1134,7 +1134,7 @@ export abstract class UpsertInvoiceRepository {
 }
 ```
 
-```typescript
+```ts
 // src/invoices/infrastructure/persistance/repositories/find-invoice.repository.ts
 import { Injectable } from '@nestjs/common';
 import { FindInvoiceRepository } from '../../../application/ports/find-invoice.repository';
@@ -1159,7 +1159,7 @@ export class OrmFindInvoiceRepository implements FindInvoiceRepository {
 }
 ```
 
-```typescript
+```ts
 // src/invoices/infrastructure/persistance/repositories/upsert-invoice.repository.ts
 import { Injectable } from '@nestjs/common';
 import { UpsertInvoiceRepository } from '../../../application/ports/upsert-invoice.repository';
@@ -1182,7 +1182,7 @@ export class OrmUpsertInvoiceRepository implements UpsertInvoiceRepository {
 
 A small module wires the repositories:
 
-```typescript
+```ts
 // src/invoices/infrastructure/persistance/persistence.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -1223,7 +1223,7 @@ Read-model projections run as event handlers.
 
 For invoice creation:
 
-```typescript
+```ts
 // src/invoices/application/event-handlers/invoice-created.event-handler.ts
 import { EventsHandler, IEventHandler } from '@nestjs/cqrs';
 import { InvoiceCreatedEvent } from '../../domain/events/invoice-created.event';
@@ -1254,7 +1254,7 @@ export class InvoiceCreatedEventHandler
 
 For invoice payment:
 
-```typescript
+```ts
 // src/invoices/application/event-handlers/invoice-paid.event-handler.ts
 import { EventsHandler, IEventHandler } from '@nestjs/cqrs';
 import { InvoicePaidEvent } from '../../domain/events/invoice-paid.event';
@@ -1295,12 +1295,12 @@ In production, you would combine this with:
 
 Queries model read operations:
 
-```typescript
+```ts
 // src/invoices/application/queries/impl/find-all-invoices.query.ts
 export class FindAllInvoicesQuery {}
 ```
 
-```typescript
+```ts
 // src/invoices/application/queries/impl/find-invoice-by-id.query.ts
 export class FindInvoiceByIdQuery {
   constructor(public readonly id: string) {}
@@ -1309,7 +1309,7 @@ export class FindInvoiceByIdQuery {
 
 Handlers delegate to the read repository:
 
-```typescript
+```ts
 // src/invoices/application/queries/handlers/find-all-invoices.query-handler.ts
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 import { FindAllInvoicesQuery } from '../impl/find-all-invoices.query';
@@ -1328,7 +1328,7 @@ export class FindAllInvoicesQueryHandler
 }
 ```
 
-```typescript
+```ts
 // src/invoices/application/queries/handlers/find-invoice-by-id.query-handler.ts
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 import { FindInvoiceByIdQuery } from '../impl/find-invoice-by-id.query';
@@ -1361,7 +1361,7 @@ For now, having query handlers keeps the shape of the application consistent: al
 
 The `InvoicesService` orchestrates commands and queries through `CommandBus` and `QueryBus`:
 
-```typescript
+```ts
 // src/invoices/application/invoices.service.ts
 import { Injectable } from '@nestjs/common';
 import { CreateInvoiceDto } from '../presentation/http/dto/create-invoice.dto';
@@ -1408,7 +1408,7 @@ The service shields controllers from CQRS details:
 
 DTOs describe the request payloads and response shapes:
 
-```typescript
+```ts
 // src/invoices/presentation/http/dto/create-invoice.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -1421,7 +1421,7 @@ export class CreateInvoiceDto {
 }
 ```
 
-```typescript
+```ts
 // src/invoices/presentation/http/dto/update-invoice.dto.ts
 import { PartialType } from '@nestjs/mapped-types';
 import { CreateInvoiceDto } from './create-invoice.dto';
@@ -1431,7 +1431,7 @@ export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) {}
 
 The HTTP controller exposes the API:
 
-```typescript
+```ts
 // src/invoices/presentation/http/invoices.controller.ts
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { InvoicesService } from '../../application/invoices.service';
@@ -1479,7 +1479,7 @@ export class InvoicesController {
 
 The invoice module combines everything:
 
-```typescript
+```ts
 // src/invoices/application/invoices.module.ts
 import { Module } from '@nestjs/common';
 import { InvoicesService } from './invoices.service';
@@ -1518,7 +1518,7 @@ export class InvoicesModule {}
 
 `InvoiceInfrastructureModule` pulls in shared infrastructure and persistence:
 
-```typescript
+```ts
 // src/invoices/infrastructure/invoice-infrastructure.module.ts
 import { Module } from '@nestjs/common';
 import { InvoicePersistenceModule } from './persistance/persistence.module';
