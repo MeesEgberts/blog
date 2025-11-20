@@ -225,7 +225,7 @@ services:
 
 Example `.env`:
 
-```env
+```text
 PORT=3001
 
 EVENT_STORE_HOST=localhost
@@ -259,7 +259,7 @@ By separating the connections early, you avoid accidental coupling such as joini
 
 The event store is defined through an abstraction and implemented on Postgres with TypeORM.
 
-```ts
+```typescript
 // src/shared/application/ports/event-store.ts
 import { EventEntity } from '../../infrastructure/event-store/entities/event.entity';
 
