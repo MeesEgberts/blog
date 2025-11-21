@@ -11,11 +11,19 @@ CQRS (Command Query Responsibility Segregation) is a pattern that separates the 
 
 Event Sourcing complements CQRS by storing every state change as an immutable event instead of overwriting data. The current state of an entity is rebuilt by replaying its events, creating a complete history of what happened.
 
+### How CQRS, Event Sourcing, and DDD relate
+
+CQRS and Event Sourcing are separate architectural patterns. You can use CQRS without an event store, and you can use Event Sourcing without maintaining separate read models. These patterns are often combined when the domain needs clear write boundaries, auditability, and read-side optimization.
+
+Domain-Driven Design (DDD) is another concern. It becomes useful when the domain is complex enough to warrant explicit bounded contexts, aggregates, and ubiquitous language. CQRS and Event Sourcing pair well with DDD, but neither requires full DDD adoption. For simple domains, a traditional CRUD model may still be sufficient.
+
 ## Why use CQRS and Event Sourcing?
 
 Traditional CRUD systems mix reads and writes on the same models, which can become complex as applications grow. CQRS and Event Sourcing introduce a clearer separation of concerns, making it easier to evolve your domain logic, integrate other systems through events, and audit every change in your data.
 
-## Benefits of CQRS and Event Sourcing?
+These patterns add structural and operational complexity. They are valuable when the domain has meaningful business rules, when the system must track every state change, or when reads have different performance requirements than writes. For domains with straightforward CRUD semantics, the overhead may not be justified.
+
+## Benefits of CQRS and Event Sourcing
 
 * **Scalability:** Read and write sides scale independently.
 * **Auditability:** Every change is recorded and traceable.
@@ -45,13 +53,6 @@ For simplicity, this example keeps the read and write sides within the same Nest
 
 The rest of this guide walks through a concrete implementation in NestJS: an `Invoice` service that creates invoices and marks them as paid.
 
-The goal is not only to show *what* to code, but *why* each decision exists:
-
-* why we separate read and write databases,
-* why aggregates do not talk to the database directly,
-* why events are stored in a generic `events` table before they become read models, and
-* how NestJS’s CQRS utilities tie this together.
-
 The repository is structured around four layers:
 
 - `core/` – application-wide infrastructure (database connections)
@@ -59,14 +60,14 @@ The repository is structured around four layers:
 - `invoices/` – the invoice bounded context (domain, commands, queries, HTTP)
 - `src/main.ts` & `src/app.module.ts` – NestJS bootstrap and composition
 
-This layout mirrors a typical domain-driven design setup:
+This layout follows a domain-driven design setup:
 
-* **Domain** has no infrastructure dependencies.
-* **Application** orchestrates use cases using the domain.
-* **Infrastructure** implements technical details like persistence and messaging.
-* **Presentation** exposes the application via HTTP.
+* **Domain** code for the `invoices` bounded context depends on domain concepts such as aggregates, value objects, and domain events, not on persistence or HTTP. In this guide, the aggregates inherit from a shared base class that adapts Nest’s eventing facilities; that base class sits at the boundary between domain and infrastructure and is a deliberate compromise for integration.
+* **Application** coordinates use cases by invoking aggregates, persisting events, and triggering projections.
+* **Infrastructure** provides technical capabilities such as persistence, database connections, and event dispatching.
+* **Presentation** exposes the application through HTTP or other transports.
 
-That separation matters once the system grows: you can change storage, event-bus implementation, or API shape without rewriting domain logic.
+This separation keeps the domain model of the bounded context stable even when infrastructure or API layers evolve.
 
 <br />
 
@@ -79,7 +80,7 @@ src/
     domain/
     infrastructure/
     presentation/
-```
+````
 
 ### Step 1: Bootstrapping the NestJS project
 
@@ -91,7 +92,7 @@ cd event-sourcing
 pnpm add @nestjs/cqrs @nestjs/typeorm typeorm pg @nestjs/swagger @nestjs/mapped-types
 ```
 
-The main entry point enables Swagger for quick inspection of the API:
+The main entry point enables Swagger for inspection of the API:
 
 ```ts
 // src/main.ts
@@ -121,7 +122,6 @@ bootstrap();
 
 * `@nestjs/cqrs` gives you `CommandBus`, `QueryBus`, `EventBus`, and helpers around aggregates and handlers. This is the backbone for CQRS in Nest.
 * Swagger shortens the feedback loop: you can create and pay invoices from a browser while watching the `events` and `invoices` tables change.
-* The bootstrap code stays thin; all domain and infrastructure concerns live in modules.
 
 The root module wires up CQRS, core infrastructure, shared event-sourcing utilities, and the invoice module:
 
@@ -149,7 +149,7 @@ export class AppModule {}
 * `SharedModule` holds generic event-sourcing infrastructure reusable across bounded contexts.
 * `InvoicesModule` is a single bounded context; more contexts can be added later without touching the others.
 
-This structure scales to multiple domains and even multiple transport layers.
+This structure scales to multiple domains and multiple transport layers.
 
 ### Step 2: Configuring two databases (event store + read model)
 
@@ -271,12 +271,12 @@ export abstract class EventStore {
 
 #### Why an `EventStore` port?
 
-This is a classic ports-and-adapters move:
+This moves the design toward a ports-and-adapters style:
 
 * The **port** (`EventStore` abstract class) expresses what the application needs: append events and load them by stream.
 * The **adapter** (`PgEventStore`) decides *how* to do this: SQL, NoSQL, EventStoreDB, Kafka, or an external service.
 
-Your domain and application layers depend only on the abstraction. Replacing Postgres with another store is a matter of binding a different implementation.
+In this sample the port is still typed in terms of the persistence entity `EventEntity` for simplicity, so there is a direct dependency from the abstraction to the storage shape. A stricter design would introduce a domain-level event DTO for the port and map that to specific persistence models in the adapter. Even with this coupling, the rest of the application depends on the `EventStore` abstraction and can change implementation details in a single place.
 
 The `events` table stores all domain events:
 
@@ -388,12 +388,12 @@ export class PgEventStore implements EventStore {
 
 When you persist multiple events from a single command (for example, `OrderPlaced` + `StockReserved`), they should either all appear in the stream or none:
 
-* The **stream** should never represent a partial change.
+* The **stream** should not represent a partial change.
 * Using a `QueryRunner` and explicit transaction guarantees atomicity per call to `persist`.
 
-This code does **not** yet implement optimistic concurrency checks (comparing expected `position` to database state), but it is structured so you can add those checks in one place.
+This code does not yet implement optimistic concurrency checks (comparing expected `position` to database state), but it is structured so you can add those checks in one place.
 
-`getEventsByStreamId` enforces an important invariant: if there are no events, the aggregate does not exist. That removes the need to persist “empty” aggregates.
+`getEventsByStreamId` enforces an invariant: if there are no events, the aggregate does not exist. That removes the need to persist “empty” aggregates.
 
 ### Step 4: Making Nest’s EventBus talk to the event store
 
@@ -465,7 +465,7 @@ This implementation:
 * appends events to Postgres, and
 * delegates actual publishing to a TypeORM subscriber (later in Step 6).
 
-The split between **writing to the store** and **notifying handlers** gives you more control over reliability patterns (outbox, retries, replay, etc.).
+The split between **writing to the store** and **notifying handlers** gives you control over reliability patterns (outbox, retries, replay, etc.).
 
 `EventSerializer` maps domain events to `EventEntity` instances:
 
@@ -499,14 +499,14 @@ export class EventSerializer {
 
 #### Why use the constructor name as `type`?
 
-The event `type` string is what ties storage and code together:
+The event `type` string ties storage and code together:
 
 * When you evolve the system (add handlers, replay events), you need to know which class to instantiate.
 * Using `constructor.name` keeps this mapping local to the event class.
 
 In environments where class names might be mangled, you can replace this with an explicit `static eventType = 'INVOICE_CREATED'` property and map that instead.
 
-To get events from the store back into actual class instances, a small registry keeps track of all event classes:
+To get events from the store back into actual class instances, a registry keeps track of all event classes:
 
 ```ts
 // src/shared/infrastructure/event-store/event-cls.registry.ts
@@ -620,7 +620,7 @@ export class VersionedAggregateRoot extends AggregateRoot {
 
 #### Why track version on the aggregate?
 
-The aggregate version is essential for two reasons:
+The aggregate version is important for two reasons:
 
 1. **Correct event positions**
 New events must be appended after the last known position to maintain a strict ordering per stream.
@@ -628,6 +628,8 @@ New events must be appended after the last known position to maintain a strict o
 You can compare the current version with what is stored to detect conflicting updates without locking rows.
 
 `loadFromHistory` uses `AggregateRoot.loadFromHistory` from `@nestjs/cqrs`, which calls the `on<EventName>` handlers on the aggregate. That ensures the aggregate’s state is derived from the same events that are stored, not from ad-hoc setters.
+
+In DDD terms, the application layer defines transactional boundaries and coordinates aggregates. Command handlers belong to this layer: they receive intent, load the required aggregates, invoke domain operations, and commit events. They should not know how aggregates are reconstructed internally.
 
 The `AggregateRehydrator` rebuilds an aggregate from its event stream:
 
@@ -775,15 +777,15 @@ export class EventEntitySubscriber
 
 This choice separates two concerns:
 
-* **Persistence**: the event is durably stored in the database.
-* **Dispatch**: handlers are notified after the insert succeeds.
+* **Persistence**: the event is stored in the database.
+* **Dispatch**: handlers are notified when the insert succeeds at the ORM level.
 
-Publishing from `afterInsert` means:
+Publishing from `afterInsert` keeps the write to the event store and the projection dispatch on different axes:
 
-* If the transaction fails, handlers never see the event.
-* If you later introduce an outbox table or retry logic, the database remains the single source of truth.
+* The insert into `events` runs inside a database transaction.
+* The subscriber then pushes the event object into Nest’s `EventBus` in-process.
 
-This pattern moves you toward a reliable eventing model where projections and side effects do not run against uncommitted data.
+This simple setup does not couple projection work to the event-store transaction; projections use their own persistence connection. For strict guarantees that projections only run for committed events across different stores, you still need patterns such as transactional outbox/inbox and idempotent projections. The subscriber keeps the event store as the reference log while leaving room to introduce those patterns later.
 
 The overall flow:
 
@@ -792,18 +794,24 @@ The overall flow:
 3. TypeORM `EventEntitySubscriber` sees the new row and publishes the event instance to the Nest `EventBus`.
 4. Event handlers update read models or trigger side effects.
 
+<br />
+
 ---
 
 ## Implementing the Invoice bounded context
 
 With shared infrastructure in place, you can implement a concrete domain: invoices.
 
+From a DDD perspective, the `invoices` module represents a bounded context: it owns all concepts related to issuing, managing, and paying invoices. Other contexts—such as customers, payments, or accounting—will have their own models and rules, even if they reference the same real-world entities.
+
+Aggregate boundaries should be defined by invariants, not by data grouping. In an invoicing domain, examples of invariants include: an invoice cannot be paid twice; a cancelled invoice cannot be paid; or an invoice must be consistent with its line items. The simplified aggregate in this guide focuses only on the lifecycle necessary to illustrate CQRS and Event Sourcing mechanics.
+
 The invoice domain is deliberately simple:
 
 * creation: `InvoiceCreatedEvent`
 * payment: `InvoicePaidEvent`
 
-This is enough to show aggregate life cycle, projections, and rehydration without unrelated business rules.
+This is enough to show aggregate life cycle, projections, and rehydration without additional business rules.
 
 ### Step 7: Defining invoice domain events
 
@@ -867,6 +875,12 @@ export class Invoice extends VersionedAggregateRoot {
     this.apply(new InvoicePaidEvent(this.id));
   }
 
+  [`on${InvoiceCreatedEvent.name}`](event: InvoiceCreatedEvent) {
+    this.customerId = event.customerId;
+    this.amount = event.amount;
+    this.paid = false;
+  }
+
   [`on${InvoicePaidEvent.name}`](event: InvoicePaidEvent) {
     if (this.paid) {
       throw new Error('Invoice already paid');
@@ -926,7 +940,7 @@ export class InvoiceFactory {
 
 #### Why a factory and `skipHandler`?
 
-Creation often has slightly different rules from updates:
+Creation often has different rules from updates:
 
 * You need a fresh id.
 * You may validate input differently.
@@ -1061,11 +1075,11 @@ They should not:
 * implement business rules that belong to the aggregate,
 * perform side effects that belong in projections or process managers.
 
-This separation keeps handlers easy to test and quick to scan: “given this command, which aggregate method is called and what happens next?”.
+This separation keeps handlers easy to read and test: for a given command, you can see which aggregate method is called and what happens next.
 
 ### Step 10: Read model and projections (read side)
 
-The read model here is simple:
+The read model type in this guide is simple and used mainly for documentation:
 
 ```ts
 // src/invoices/domain/read-models/invoice.read-model.ts
@@ -1102,17 +1116,19 @@ export class InvoiceEntity {
 }
 ```
 
-#### Why separate read model and aggregate?
+At runtime the TypeORM repositories return `InvoiceEntity`, which includes `id` and `paid`. The `InvoiceReadModel` captures a compact view that is suitable as a documented schema in the API description. In a production system you would usually align the read model type and the persisted projection more closely, or map from entities to explicit DTOs.
 
-The aggregate represents the write model: invariants, decision logic, and event emission. The read model is optimized for:
+#### Why separate the read model from the aggregate?
 
-* simple mapping to JSON responses,
-* straightforward queries (find by id, list all, filter by status),
-* views tailored to UI needs.
+Aggregates belong on the write side. They contain the decision state required to enforce business rules and invariants. This state can include fields that are not intended for exposure, such as internal flags or data used solely for validation and consistency checks.
 
-By not reusing the aggregate as a read model, you avoid dragging in event-sourcing concerns into simple queries.
+Read models belong on the read side. They store the projected state that the application returns to clients, and their structure is shaped for queries and for safe exposure through the API. This separation prevents accidental leakage of internal or sensitive aggregate data and avoids mixing domain logic with presentation concerns.
 
-Repositories hide TypeORM details behind interfaces:
+In this example, the read model is persisted separately in the `invoices` table, and the query handlers talk to a `FindInvoiceRepository` abstraction. For brevity, some write endpoints still return the aggregate instance produced by the command handlers, even though in a stricter CQRS setup clients would rely only on read models or follow-up queries.
+
+By keeping aggregates and read models conceptually independent, the write side stays focused on enforcing rules, while the read side provides controlled, explicit representations of state for external consumers.
+
+Repositories centralize TypeORM usage behind interfaces:
 
 ```ts
 // src/invoices/application/ports/find-invoice.repository.ts
@@ -1217,7 +1233,7 @@ Even though the read model uses a simple table now, you might later:
 * denormalize into multiple views,
 * or query a search index.
 
-By depending on `FindInvoiceRepository` and `UpsertInvoiceRepository` instead of `Repository<InvoiceEntity>`, the application layer does not need to change when persistence evolves.
+By depending on `FindInvoiceRepository` and `UpsertInvoiceRepository` instead of `Repository<InvoiceEntity>`, the application layer knows only about these abstractions. In this sample the interfaces still use `InvoiceEntity` and `DeepPartial<InvoiceEntity>` for convenience, but the indirection gives you a single place to adapt the persistence layer if it changes.
 
 Read-model projections run as event handlers.
 
@@ -1284,12 +1300,14 @@ Event handlers are projections from the write model to the read model:
 
 * They translate domain events into table updates.
 * They can maintain multiple projections from the same stream (`invoices_by_customer`, `invoice_statistics`, etc.).
-* They run once per event and are idempotent by design if you structure them well.
+* They run once per event and can be written to be idempotent.
 
 In production, you would combine this with:
 
 * an outbox/inbox pattern to guarantee at-least-once delivery, and
 * idempotency keys or natural keys (`id`) to avoid duplicate inserts.
+
+Because projections run in response to events, the read side is eventually consistent with the event store. After a command completes, there may be a short delay before the corresponding read model reflects the change. This delay is expected in systems built around CQRS and Event Sourcing and should be acknowledged when designing user interactions and workflows.
 
 ### Step 11: Queries and query handlers
 
@@ -1353,11 +1371,13 @@ For simple applications, controllers can call read repositories directly. In CQR
 
 * one place to apply cross-cutting concerns like caching or logging,
 * symmetry with command handling,
-* flexibility to evolve queries into separate microservices later.
+* flexibility to evolve queries into separate services later.
 
 For now, having query handlers keeps the shape of the application consistent: all reads and writes become explicit conceptual operations.
 
 ### Step 12: Application service and HTTP API
+
+The application layer exposes use cases to external callers. It pulls together commands, queries, aggregates, and projections without exposing domain internals. In DDD terminology, this layer acts as the orchestrator: it ensures that writes are performed through aggregates and that reads are performed through the query side, keeping the boundary between the two explicit.
 
 The `InvoicesService` orchestrates commands and queries through `CommandBus` and `QueryBus`:
 
@@ -1429,6 +1449,8 @@ import { CreateInvoiceDto } from './create-invoice.dto';
 export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) {}
 ```
 
+The controller delegates to the application service instead of interacting with command or query buses directly. This keeps HTTP concerns isolated and avoids coupling the transport layer to the internal command/query abstractions. As the system evolves to support other transports or workflows, the application service remains the consistent entry point for external operations.
+
 The HTTP controller exposes the API:
 
 ```ts
@@ -1476,6 +1498,11 @@ export class InvoicesController {
   }
 }
 ```
+
+In this example, the `create` and `pay` endpoints return the aggregate instance produced by the command handlers. The Swagger decorators still refer to `InvoiceReadModel` so that the documented schema stays compact and focused on the fields that matter for clients. In a stricter CQRS setup you might instead:
+
+* return only a read model (by issuing a query after the command), or
+* return an identifier or `202 Accepted` and let clients fetch state from the query side.
 
 The invoice module combines everything:
 
@@ -1533,7 +1560,7 @@ export class InvoiceInfrastructureModule {}
 
 #### Why this module wiring?
 
-`InvoicesModule` becomes the single entry point for the bounded context:
+`InvoicesModule` becomes the entry point for the bounded context:
 
 * All command, query, and event handlers are declared here.
 * All infrastructure dependencies are imported via `InvoiceInfrastructureModule`.
@@ -1598,6 +1625,8 @@ You can inspect the `events` and `invoices` tables in Postgres to see the separa
 * `events` tells *what happened* and in which order.
 * `invoices` tells *what the world looks like now* for API consumers.
 
+<br />
+
 ---
 
 ## Where to go next
@@ -1624,3 +1653,4 @@ The repository already gives you a concrete reference implementation you can ext
 ---
 
 [View the repository on GitHub](https://github.com/MeesEgberts/event-sourcing)
+
