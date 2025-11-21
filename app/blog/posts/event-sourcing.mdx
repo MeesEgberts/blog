@@ -62,7 +62,7 @@ The repository is structured around four layers:
 
 This layout follows a domain-driven design setup:
 
-* **Domain** code for the `invoices` bounded context depends on domain concepts such as aggregates, value objects, and domain events, not on persistence or HTTP. In this guide, the aggregates inherit from a shared base class that adapts Nest’s eventing facilities; that base class sits at the boundary between domain and infrastructure and is a deliberate compromise for integration.
+* **Domain** code for the `invoices` bounded context depends on domain concepts such as aggregates, value objects, and domain events.
 * **Application** coordinates use cases by invoking aggregates, persisting events, and triggering projections.
 * **Infrastructure** provides technical capabilities such as persistence, database connections, and event dispatching.
 * **Presentation** exposes the application through HTTP or other transports.
